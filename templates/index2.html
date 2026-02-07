@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OCR Extractor</title>
+
+    <style>
+        body {
+            font-family: Arial;
+            margin: 0;
+            background: #f4f6f9;
+        }
+
+        .title-bar {
+            background: #2563eb;
+            color: white;
+            padding: 15px;
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        .container {
+            padding: 20px;
+        }
+
+        button {
+            padding: 10px 18px;
+            margin: 5px;
+            border: none;
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        button:hover {
+            background: #1e40af;
+        }
+
+        #resultBox {
+            background: white;
+            padding: 15px;
+            min-height: 120px;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+
+        video, canvas, img {
+            margin-top: 10px;
+            max-width: 350px;
+            border-radius: 10px;
+        }
+
+        .history {
+            margin-top: 25px;
+        }
+
+        .history-item {
+            background: white;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="title-bar">
+    Image / PDF → Nepali OCR Extractor
+</div>
+
+<div class="container">
+
+    <input type="file" id="fileInput">
+    <button onclick="uploadFile()">Upload</button>
+
+    <br><br>
+
+    <button onclick="startCamera()">Open Camera</button>
+    <button onclick="stopCamera()">Close Camera</button>
+    <button onclick="captureImage()">Capture</button>
+
+    <br>
+
+    <video id="video" autoplay style="display:none;"></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <br>
+
+    <img id="preview" />
+
+    <h3>Latest OCR Result</h3>
+    <div id="resultBox">No result yet</div>
+
+    <div class="history">
+        <h3>History</h3>
+        <div id="historyList"></div>
+    </div>
+
+</div>
+
+<script>
+
+let video = document.getElementById("video");
+let canvas = document.getElementById("canvas");
+let resultBox = document.getElementById("resultBox");
+let historyList = document.getElementById("historyList");
+let preview = document.getElementById("preview");
+
+let stream = null;
+
+// ✅ LOAD HISTORY FROM LOCAL STORAGE
+window.onload = () => {
+    let history = JSON.parse(localStorage.getItem("ocrHistory") || "[]");
+    history.forEach(addHistoryUI);
+};
+
+
+// ================= FILE UPLOAD =================
+function uploadFile() {
+
+    let file = document.getElementById("fileInput").files[0];
+    if (!file) return alert("Select file");
+
+    preview.src = URL.createObjectURL(file);
+
+    let formData = new FormData();
+    formData.append("file", file);
+
+    // ✅ SHOW EXTRACTING
+    resultBox.innerText = "Extracting...";
+
+    fetch("/extract-text", {
+        method: "POST",
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if(data.result){
+            resultBox.innerText = data.result;
+            saveHistory("Upload", data.result);
+        } else {
+            resultBox.innerText = data.error;
+        }
+    });
+}
+
+
+// ================= CAMERA =================
+function startCamera(){
+    navigator.mediaDevices.getUserMedia({ video: true })
+    .then(s => {
+        stream = s;
+        video.srcObject = stream;
+        video.style.display = "block";
+    });
+}
+
+function stopCamera(){
+    if(stream){
+        stream.getTracks().forEach(track => track.stop());
+        video.style.display = "none";
+    }
+}
+
+function captureImage(){
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    let ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0);
+
+    let dataURL = canvas.toDataURL("image/png");
+
+    preview.src = dataURL;
+
+    // ✅ SHOW EXTRACTING
+    resultBox.innerText = "Extracting...";
+
+    fetch("/capture", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({image: dataURL})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if(data.result){
+            resultBox.innerText = data.result;
+            saveHistory("Camera", data.result);
+        } else {
+            resultBox.innerText = data.error;
+        }
+    });
+}
+
+
+// ================= HISTORY =================
+function saveHistory(type, result){
+
+    let history = JSON.parse(localStorage.getItem("ocrHistory") || "[]");
+
+    let item = {
+        type,
+        result,
+        time: new Date().toLocaleString()
+    };
+
+    history.unshift(item);
+    localStorage.setItem("ocrHistory", JSON.stringify(history));
+
+    addHistoryUI(item);
+}
+
+function addHistoryUI(item){
+
+    let div = document.createElement("div");
+    div.className = "history-item";
+
+    div.innerHTML = `
+        <b>${item.type}</b><br>
+        ${item.result}<br>
+        <small>${item.time}</small>
+    `;
+
+    historyList.prepend(div);
+}
+
+</script>
+
+</body>
+</html>

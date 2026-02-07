@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nepali OCR AI</title>
+    <style>
+        body { font-family: Arial; margin: 40px; }
+        video, canvas, img { border: 1px solid #ccc; }
+        textarea { width: 100%; height: 120px; }
+        .history-card {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 15px;
+        }
+        .history-card img {
+            max-width: 200px;
+            display: block;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<h2>🇳🇵 Nepali OCR AI</h2>
+
+<!-- Upload -->
+<h3>Upload Image / PDF</h3>
+<input type="file" id="fileInput" accept="image/*,.pdf">
+<button onclick="uploadFile()">Upload & Extract</button>
+
+<img id="preview" style="display:none; max-width:300px; margin-top:10px;">
+
+<!-- Camera -->
+<h3>Camera</h3>
+<button id="startCameraBtn">Start Camera</button>
+<button id="closeCameraBtn" style="display:none;">Close Camera</button><br><br>
+
+<video id="video" width="400" height="300" autoplay style="display:none;"></video><br>
+<button id="captureBtn" style="display:none;">Capture & Extract</button>
+<canvas id="canvas" width="400" height="300" style="display:none;"></canvas>
+
+<h3>Latest Result</h3>
+<textarea id="result"></textarea>
+
+<h3>📜 History</h3>
+<div id="history"></div>
+
+<script>
+const resultBox = document.getElementById("result");
+const preview = document.getElementById("preview");
+const historyDiv = document.getElementById("history");
+
+// -------- RENDER HISTORY --------
+function renderHistory(items) {
+    historyDiv.innerHTML = "";
+
+    items.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "history-card";
+
+        card.innerHTML = `
+            <strong>Type:</strong> ${item.type}<br>
+            <strong>File:</strong> ${item.filename}<br><br>
+        `;
+
+        if (item.image) {
+            const img = document.createElement("img");
+            img.src = "data:image/png;base64," + item.image;
+            card.appendChild(img);
+        }
+
+        const text = document.createElement("textarea");
+        text.value = item.text;
+        card.appendChild(text);
+
+        historyDiv.appendChild(card);
+    });
+}
+
+// -------- UPLOAD --------
+async function uploadFile() {
+    const input = document.getElementById("fileInput");
+    if (!input.files.length) return alert("Select a file");
+
+    const file = input.files[0];
+
+    if (file.type.startsWith("image/")) {
+        preview.src = URL.createObjectURL(file);
+        preview.style.display = "block";
+    } else {
+        preview.style.display = "none";
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    resultBox.value = "Extracting...";
+
+    const res = await fetch("/extract-text", { method: "POST", body: formData });
+    const data = await res.json();
+
+    resultBox.value = data.extracted_text;
+    renderHistory(data.history);
+}
+
+// -------- CAMERA --------
+const startCameraBtn = document.getElementById("startCameraBtn");
+const closeCameraBtn = document.getElementById("closeCameraBtn");
+const captureBtn = document.getElementById("captureBtn");
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+
+let stream = null;
+
+startCameraBtn.onclick = async () => {
+    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    video.style.display = "block";
+    captureBtn.style.display = "inline-block";
+    closeCameraBtn.style.display = "inline-block";
+    startCameraBtn.style.display = "none";
+};
+
+captureBtn.onclick = () => {
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    preview.src = canvas.toDataURL("image/png");
+    preview.style.display = "block";
+
+    canvas.toBlob(async blob => {
+        const formData = new FormData();
+        formData.append("file", blob, "camera.png");
+
+        const res = await fetch("/extract-text", { method: "POST", body: formData });
+        const data = await res.json();
+
+        resultBox.value = data.extracted_text;
+        renderHistory(data.history);
+    });
+};
+
+closeCameraBtn.onclick = () => {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    video.style.display = "none";
+    captureBtn.style.display = "none";
+    closeCameraBtn.style.display = "none";
+    startCameraBtn.style.display = "inline-block";
+};
+</script>
+
+</body>
+</html>
