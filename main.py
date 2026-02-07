@@ -9,7 +9,7 @@ import json
 from ocr import extract_text_from_image, extract_text_from_pdf
 
 app = FastAPI(title="Nepali OCR AI")
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=".")
 
 HISTORY_FILE = "history.json"
 
